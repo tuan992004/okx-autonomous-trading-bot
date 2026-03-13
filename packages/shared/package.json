@@ -1,0 +1,27 @@
+{
+    "name": "@okx-bot/shared",
+    "version": "1.0.0",
+    "private": true,
+    "type": "module",
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+        ".": "./dist/index.js",
+        "./types": "./dist/types.js",
+        "./logger": "./dist/logger.js",
+        "./config": "./dist/config.js",
+        "./constants": "./dist/constants.js",
+        "./anthropic": "./dist/anthropic.js"
+    },
+    "scripts": {
+        "build": "tsc"
+    },
+    "dependencies": {
+        "@anthropic-ai/sdk": "^0.39.0",
+        "dotenv": "^16.4.0",
+        "toml": "^3.0.0",
+        "winston": "^3.17.0",
+        "winston-daily-rotate-file": "^5.0.0",
+        "zod": "^3.24.0"
+    }
+}

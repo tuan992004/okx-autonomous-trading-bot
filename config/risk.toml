@@ -1,0 +1,14 @@
+[limits]
+max_order_usdt = 1000
+max_total_exposure_usdt = 5000
+max_daily_loss_usdt = 200
+max_open_positions = 3
+max_position_pct = 40              # max % of portfolio in single position
+
+[killswitch]
+enabled = true
+consecutive_loss_count = 5         # pause after N consecutive losses
+cooldown_minutes = 60
+
+[forbidden]
+instruments = []                   # e.g. ["SHIB-USDT", "DOGE-USDT-SWAP"]

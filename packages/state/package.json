@@ -1,0 +1,16 @@
+{
+    "name": "@okx-bot/state",
+    "version": "1.0.0",
+    "private": true,
+    "type": "module",
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "scripts": {
+        "build": "tsc",
+        "test": "vitest run"
+    },
+    "dependencies": {
+        "@okx-bot/shared": "workspace:*",
+        "sql.js": "^1.11.0"
+    }
+}

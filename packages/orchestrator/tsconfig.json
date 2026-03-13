@@ -1,0 +1,35 @@
+{
+    "extends": "../../tsconfig.json",
+    "compilerOptions": {
+        "composite": true,
+        "outDir": "dist",
+        "rootDir": "src"
+    },
+    "include": [
+        "src/**/*.ts"
+    ],
+    "exclude": [
+        "node_modules",
+        "dist"
+    ],
+    "references": [
+        {
+            "path": "../shared"
+        },
+        {
+            "path": "../state"
+        },
+        {
+            "path": "../scanner"
+        },
+        {
+            "path": "../decision"
+        },
+        {
+            "path": "../validator"
+        },
+        {
+            "path": "../journal"
+        }
+    ]
+}

@@ -1,0 +1,20 @@
+{
+    "name": "@okx-bot/orchestrator",
+    "version": "1.0.0",
+    "private": true,
+    "type": "module",
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "scripts": {
+        "build": "tsc",
+        "dev": "tsx src/index.ts"
+    },
+    "dependencies": {
+        "@okx-bot/shared": "workspace:*",
+        "@okx-bot/state": "workspace:*",
+        "@okx-bot/scanner": "workspace:*",
+        "@okx-bot/decision": "workspace:*",
+        "@okx-bot/validator": "workspace:*",
+        "@okx-bot/journal": "workspace:*"
+    }
+}

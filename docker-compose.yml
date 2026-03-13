@@ -1,0 +1,36 @@
+version: "3.8"
+
+services:
+  okx-bot:
+    build: .
+    container_name: okx-trading-bot
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - NODE_ENV=production
+      - LIVE_TRADING=${LIVE_TRADING:-false}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - OKX_PROFILE=${OKX_PROFILE:-demo}
+    volumes:
+      # Persist SQLite database
+      - bot-data:/app/data
+      # Persist logs
+      - bot-logs:/app/logs
+      # Mount OKX config (read-only)
+      - ${HOME}/.okx:/root/.okx:ro
+      # Mount custom strategy/risk config (optional)
+      - ./config:/app/config:ro
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.5"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  bot-data:
+  bot-logs:

@@ -1,0 +1,23 @@
+[instruments]
+spot = ["BTC-USDT", "ETH-USDT"]
+swap = ["BTC-USDT-SWAP"]
+
+[signals]
+momentum_threshold_pct = 2.0       # % move to trigger signal
+rsi_oversold = 30
+rsi_overbought = 70
+volume_spike_multiplier = 2.5      # x rolling average
+funding_rate_extreme = 0.001       # absolute funding rate threshold
+orderbook_imbalance_ratio = 3.0    # bid/ask volume ratio threshold
+
+[execution]
+default_order_type = "limit"
+limit_offset_bps = 5               # price offset from mid in basis points
+max_slippage_bps = 20
+scan_interval_seconds = 30
+
+[models]
+scanner = "claude-haiku-4-5-20251001"
+decision = "claude-sonnet-4-6-20250514"
+validator = "claude-haiku-4-5-20251001"
+use_opus_for_complex = false       # flag-gated
