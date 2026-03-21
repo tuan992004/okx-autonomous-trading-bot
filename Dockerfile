@@ -40,10 +40,13 @@ COPY --from=build /app/packages/validator/package.json ./packages/validator/
 COPY --from=build /app/packages/journal/package.json ./packages/journal/
 COPY --from=build /app/packages/orchestrator/package.json ./packages/orchestrator/
 
-# Create data and logs directories
-RUN mkdir -p /app/data /app/logs
+# Create data and logs directories with correct ownership
+RUN mkdir -p /app/data /app/logs && chown -R node:node /app/data /app/logs
 
 ENV NODE_ENV=production
 ENV LIVE_TRADING=false
+
+# Drop root privileges
+USER node
 
 CMD ["node", "packages/orchestrator/dist/index.js"]

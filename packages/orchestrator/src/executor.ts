@@ -22,7 +22,7 @@ export class TradeExecutor {
      * Execute a trade. In shadow mode, simulates the fill at mid-price.
      */
     async execute(decision: TradeDecision, cycleId: string): Promise<OrderResult> {
-        if (decision.action === 'SKIP' || decision.action === 'CLOSE') {
+        if (decision.action === 'SKIP') {
             return {
                 orderId: 'skip',
                 instrument: decision.instrument,
@@ -37,7 +37,68 @@ export class TradeExecutor {
             return this.simulateExecution(decision, cycleId);
         }
 
+        if (decision.action === 'CLOSE') {
+            return this.closePosition(decision, cycleId);
+        }
+
         return this.liveExecution(decision, cycleId);
+    }
+
+    /**
+     * Close an existing position via okx-trade-cli.
+     */
+    private async closePosition(decision: TradeDecision, cycleId: string): Promise<OrderResult> {
+        const isSwap = decision.instrument.endsWith('-SWAP');
+        const module = isSwap ? 'swap' : 'spot';
+
+        try {
+            logger.info('Closing position', { cycleId, data: { instrument: decision.instrument } });
+
+            // For swaps, use the close-position command
+            if (isSwap) {
+                const { stdout } = await execFileAsync('okx', [
+                    '--profile', this.profile, '--json',
+                    module, 'close',
+                    '--instId', decision.instrument,
+                    '--mgnMode', 'cross',
+                ], { timeout: 30000 });
+
+                const response = JSON.parse(stdout) as Record<string, string>;
+                return {
+                    orderId: response['ordId'] ?? response['orderId'] ?? `close-${cycleId}`,
+                    instrument: decision.instrument,
+                    status: 'filled',
+                    fillPrice: null,
+                    fillSize: decision.size,
+                    timestamp: new Date().toISOString(),
+                };
+            }
+
+            // For spot, place a market sell for the full position size
+            const { stdout } = await execFileAsync('okx', [
+                '--profile', this.profile, '--json',
+                module, 'place',
+                '--instId', decision.instrument,
+                '--side', 'sell',
+                '--ordType', 'market',
+                '--sz', String(decision.size),
+            ], { timeout: 30000 });
+
+            const response = JSON.parse(stdout) as Record<string, string>;
+            const orderId = response['ordId'] ?? response['orderId'] ?? '';
+            return this.pollOrderStatus(decision.instrument, orderId, module);
+        } catch (error: unknown) {
+            const msg = error instanceof Error ? error.message : String(error);
+            logger.error('Failed to close position', { cycleId, data: { error: msg } });
+            return {
+                orderId: '',
+                instrument: decision.instrument,
+                status: 'rejected',
+                fillPrice: null,
+                fillSize: null,
+                timestamp: new Date().toISOString(),
+            };
+        }
     }
 
     /**
@@ -122,41 +183,63 @@ export class TradeExecutor {
             args.push('--posSide', decision.action === 'BUY' ? 'long' : 'short');
         }
 
-        try {
-            logger.info('Executing live trade', { cycleId, data: { args } });
+        const MAX_RETRIES = 3;
+        let lastError: string = '';
 
-            const { stdout } = await execFileAsync('okx', args, {
-                timeout: 30000,
-                maxBuffer: 1024 * 1024,
-            });
+        for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+            try {
+                logger.info(`Executing live trade (attempt ${attempt}/${MAX_RETRIES})`, { cycleId, data: { args } });
 
-            const response = JSON.parse(stdout) as Record<string, string>;
-            const orderId = response['ordId'] ?? response['orderId'] ?? '';
+                const { stdout } = await execFileAsync('okx', args, {
+                    timeout: 30000,
+                    maxBuffer: 1024 * 1024,
+                });
 
-            // Poll for fill status
-            const fillResult = await this.pollOrderStatus(decision.instrument, orderId, module);
+                const response = JSON.parse(stdout) as Record<string, string>;
+                const orderId = response['ordId'] ?? response['orderId'] ?? '';
 
-            return fillResult;
-        } catch (error: unknown) {
-            const msg = error instanceof Error ? error.message : String(error);
+                // Poll for fill status
+                return await this.pollOrderStatus(decision.instrument, orderId, module);
+            } catch (error: unknown) {
+                const msg = error instanceof Error ? error.message : String(error);
+                lastError = msg;
 
-            // Handle specific OKX error codes
-            if (msg.includes('51020')) {
-                logger.error('OKX error: Invalid order size', { cycleId, data: { error: msg } });
-            } else if (msg.includes('50011')) {
-                logger.warn('OKX rate limit hit — backing off 60s', { cycleId });
-                await this.sleep(60_000);
+                // Non-retryable errors — fail immediately
+                if (msg.includes('51020')) {
+                    logger.error('OKX error: Invalid order size (non-retryable)', { cycleId, data: { error: msg } });
+                    break;
+                }
+
+                // Retryable: rate limit (50011 / 429) or network errors
+                const isRateLimit = msg.includes('50011') || msg.includes('429');
+                const isNetworkError = msg.includes('ETIMEDOUT') || msg.includes('ECONNRESET')
+                    || msg.includes('timeout');
+                const isRetryable = isRateLimit || isNetworkError;
+
+                if (isRetryable && attempt < MAX_RETRIES) {
+                    // OKX recommends 60s cooldown for rate limits; shorter backoff for network errors
+                    const backoffMs = isRateLimit ? 60_000 : 1000 * Math.pow(2, attempt);
+                    logger.warn(`Retryable error — backing off ${backoffMs}ms before attempt ${attempt + 1}`, {
+                        cycleId,
+                        data: { error: msg, attempt, backoffMs },
+                    });
+                    await this.sleep(backoffMs);
+                    continue;
+                }
+
+                logger.error(`Trade execution failed after ${attempt} attempt(s)`, { cycleId, data: { error: msg } });
+                break;
             }
-
-            return {
-                orderId: '',
-                instrument: decision.instrument,
-                status: 'rejected',
-                fillPrice: null,
-                fillSize: null,
-                timestamp: new Date().toISOString(),
-            };
         }
+
+        return {
+            orderId: '',
+            instrument: decision.instrument,
+            status: 'rejected',
+            fillPrice: null,
+            fillSize: null,
+            timestamp: new Date().toISOString(),
+        };
     }
 
     /**

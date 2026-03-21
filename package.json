@@ -1,6 +1,7 @@
 {
     "name": "okx-bot",
     "private": true,
+    "type": "module",
     "version": "1.0.0",
     "description": "Autonomous OKX crypto trading bot with multi-agent architecture",
     "scripts": {

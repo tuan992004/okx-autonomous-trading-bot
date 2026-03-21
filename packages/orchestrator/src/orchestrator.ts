@@ -70,6 +70,7 @@ export class Orchestrator {
         // Load configs
         const strategyConfig = loadStrategyConfig();
         const riskConfig = loadRiskConfig();
+        const profile = process.env['OKX_PROFILE'] ?? 'demo';
         logger.info('Configuration loaded', {
             data: {
                 instruments: [
@@ -77,6 +78,7 @@ export class Orchestrator {
                     ...strategyConfig.instruments.swap,
                 ],
                 shadowMode: isShadowMode,
+                okxProfile: profile,
             },
         });
 
@@ -96,6 +98,9 @@ export class Orchestrator {
 
         // Step 1: Check OKX API connectivity
         await this.checkConnectivity();
+
+        // Step 1b: Prune old records (keep 30 days)
+        this.state.pruneOldRecords(30);
 
         // Step 2: Sync current positions
         await this.syncPositions();

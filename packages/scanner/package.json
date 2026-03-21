@@ -10,6 +10,7 @@
         "test": "vitest run"
     },
     "dependencies": {
+        "@anthropic-ai/sdk": "^0.39.0",
         "@okx-bot/shared": "workspace:*"
     }
 }

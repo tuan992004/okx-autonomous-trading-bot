@@ -13,7 +13,17 @@
         "forceConsistentCasingInFileNames": true,
         "declaration": true,
         "declarationMap": true,
-        "sourceMap": true
+        "sourceMap": true,
+        "baseUrl": ".",
+        "paths": {
+            "@okx-bot/shared": ["packages/shared/src/index.ts"],
+            "@okx-bot/state": ["packages/state/src/index.ts"],
+            "@okx-bot/scanner": ["packages/scanner/src/index.ts"],
+            "@okx-bot/decision": ["packages/decision/src/index.ts"],
+            "@okx-bot/validator": ["packages/validator/src/index.ts"],
+            "@okx-bot/journal": ["packages/journal/src/index.ts"],
+            "@okx-bot/orchestrator": ["packages/orchestrator/src/index.ts"]
+        }
     },
     "exclude": [
         "node_modules",

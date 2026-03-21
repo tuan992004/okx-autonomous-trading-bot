@@ -9,6 +9,8 @@ export const SignalTypeSchema = z.enum([
     'VOLUME_SPIKE',
     'FUNDING_RATE_EXTREME',
     'ORDERBOOK_IMBALANCE',
+    'EMA_CROSSOVER',
+    'RSI_DIVERGENCE',
 ]);
 export type SignalType = z.infer<typeof SignalTypeSchema>;
 
@@ -62,9 +64,14 @@ export const StrategyConfigSchema = z.object({
         momentum_threshold_pct: z.number().positive(),
         rsi_oversold: z.number().int().min(0).max(100),
         rsi_overbought: z.number().int().min(0).max(100),
+        rsi_period: z.number().int().positive().default(9),
         volume_spike_multiplier: z.number().positive(),
         funding_rate_extreme: z.number().positive(),
         orderbook_imbalance_ratio: z.number().positive(),
+        ema_fast_period: z.number().int().positive().default(9),
+        ema_slow_period: z.number().int().positive().default(21),
+        trend_ema_period: z.number().int().positive().default(50),
+        min_confidence_threshold: z.number().min(0).max(1).default(0.6),
     }),
     execution: z.object({
         default_order_type: z.enum(['market', 'limit', 'post_only']),
@@ -191,6 +198,12 @@ export interface MarketSnapshot {
         volumeRollingAvg: number | null;
         priceChange5: number | null;
         orderbookImbalance: number | null;
+        emaFast: number | null;
+        emaSlow: number | null;
+        emaCrossover: 'bullish' | 'bearish' | 'none';
+        trendEma: number | null;
+        trendDirection: 'BULLISH' | 'BEARISH' | 'NEUTRAL';
+        rsiDivergence: 'bullish' | 'bearish' | 'none';
     };
 }
 

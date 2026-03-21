@@ -131,11 +131,15 @@ Use the available tools to gather current market context (ticker, orderbook, acc
                 () =>
                     this.client.messages.create({
                         model: modelId,
-                        max_tokens: DECISION_LIMITS.maxOutputTokens,
+                        max_tokens: DECISION_LIMITS.maxOutputTokens + DECISION_LIMITS.thinkingBudgetTokens,
+                        thinking: {
+                            type: 'enabled',
+                            budget_tokens: DECISION_LIMITS.thinkingBudgetTokens,
+                        },
                         system: [cachedBlock(DECISION_SYSTEM_PROMPT) as Anthropic.TextBlockParam],
                         tools: this.tools,
                         messages,
-                    }),
+                    } as Anthropic.MessageCreateParamsNonStreaming),
                 { context: `Decision round ${round + 1}`, maxRetries: 2 },
             );
 

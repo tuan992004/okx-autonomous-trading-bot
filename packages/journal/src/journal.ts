@@ -65,11 +65,6 @@ export class TradeJournal {
 
         for (const entry of entries) {
             try {
-                // Record signal if present
-                if (entry.signal) {
-                    this.state.recordSignal(entry.cycleId, entry.signal);
-                }
-
                 // Record order result P&L if we have fill data
                 if (entry.orderResult && entry.orderResult.status === 'filled') {
                     // In a real implementation, P&L would be calculated from entry/exit prices

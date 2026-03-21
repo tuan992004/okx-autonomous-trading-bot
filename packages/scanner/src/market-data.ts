@@ -73,20 +73,53 @@ export class MarketDataFetcher {
 
     /**
      * Fetch a full market snapshot for a single instrument.
+     * Includes multi-timeframe data: 5m candles for signals, 1H candles for trend.
      */
-    async getSnapshot(instId: string): Promise<MarketSnapshot> {
-        const [ticker, candles, orderbook, fundingRate] = await Promise.all([
+    async getSnapshot(instId: string, config?: {
+        emaFastPeriod?: number;
+        emaSlowPeriod?: number;
+        trendEmaPeriod?: number;
+        rsiPeriod?: number;
+    }): Promise<MarketSnapshot> {
+        const emaFastPeriod = config?.emaFastPeriod ?? 9;
+        const emaSlowPeriod = config?.emaSlowPeriod ?? 21;
+        const trendEmaPeriod = config?.trendEmaPeriod ?? 50;
+        const rsiPeriod = config?.rsiPeriod ?? 9;
+
+        const [ticker, candles, trendCandles, orderbook, fundingRate] = await Promise.all([
             this.getTicker(instId),
-            this.getCandles(instId, '5m', 20),
+            this.getCandles(instId, '5m', 30),   // 30 bars for EMA(21) + padding
+            this.getCandles(instId, '1H', 60),    // 60 bars for trend EMA(50)
             this.getOrderbook(instId, 10),
             this.getFundingRate(instId),
         ]);
 
+        // EMA crossover from 5m candles
+        const emaFast = this.computeEMA(candles, emaFastPeriod);
+        const emaSlow = this.computeEMA(candles, emaSlowPeriod);
+        const crossover = this.computeEMACrossover(candles, emaFastPeriod, emaSlowPeriod);
+
+        // Trend EMA from 1H candles
+        const trendEma = this.computeEMA(trendCandles, trendEmaPeriod);
+        let trendDirection: 'BULLISH' | 'BEARISH' | 'NEUTRAL' = 'NEUTRAL';
+        if (trendEma !== null && trendCandles.length > 0) {
+            const currentPrice = trendCandles[0]!.close;
+            const pctAbove = ((currentPrice - trendEma) / trendEma) * 100;
+            if (pctAbove > 0.5) trendDirection = 'BULLISH';
+            else if (pctAbove < -0.5) trendDirection = 'BEARISH';
+        }
+
         const computedIndicators = {
-            rsi14: this.computeRSI(candles, 14),
+            rsi14: this.computeRSI(candles, rsiPeriod),
             volumeRollingAvg: this.computeVolumeAvg(candles, 20),
             priceChange5: this.computePriceChange(candles, 5),
             orderbookImbalance: this.computeOrderbookImbalance(orderbook),
+            emaFast,
+            emaSlow,
+            emaCrossover: crossover,
+            trendEma,
+            trendDirection,
+            rsiDivergence: this.computeRSIDivergence(candles, rsiPeriod),
         };
 
         return {
@@ -140,6 +173,115 @@ export class MarketDataFetcher {
         const totalAsks = orderbook.asks.reduce((sum, a) => sum + a.size, 0);
         if (totalAsks === 0) return null;
         return totalBids / totalAsks;
+    }
+
+    /**
+     * Compute Exponential Moving Average for a given period.
+     * Returns the most recent EMA value, or null if insufficient data.
+     */
+    computeEMA(candles: CandleData[], period: number): number | null {
+        if (candles.length < period) return null;
+
+        // Candles are newest-first; reverse for chronological computation
+        const closes = candles.map(c => c.close).reverse();
+        const multiplier = 2 / (period + 1);
+
+        // Seed with SMA of first `period` values
+        let ema = 0;
+        for (let i = 0; i < period; i++) {
+            ema += closes[i]!;
+        }
+        ema /= period;
+
+        // Compute EMA from period onward
+        for (let i = period; i < closes.length; i++) {
+            ema = (closes[i]! - ema) * multiplier + ema;
+        }
+
+        return ema;
+    }
+
+    /**
+     * Detect EMA crossover between fast and slow EMA.
+     * Checks if a crossover happened in the last 2 candles.
+     */
+    computeEMACrossover(
+        candles: CandleData[],
+        fastPeriod: number,
+        slowPeriod: number,
+    ): 'bullish' | 'bearish' | 'none' {
+        // Need at least slowPeriod + 1 candles to compare previous vs current
+        if (candles.length < slowPeriod + 1) return 'none';
+
+        // Current EMAs (all candles)
+        const fastNow = this.computeEMA(candles, fastPeriod);
+        const slowNow = this.computeEMA(candles, slowPeriod);
+
+        // Previous EMAs (skip most recent candle)
+        const prevCandles = candles.slice(1);
+        const fastPrev = this.computeEMA(prevCandles, fastPeriod);
+        const slowPrev = this.computeEMA(prevCandles, slowPeriod);
+
+        if (fastNow === null || slowNow === null || fastPrev === null || slowPrev === null) {
+            return 'none';
+        }
+
+        // Bullish crossover: fast was below slow, now fast is above slow
+        if (fastPrev <= slowPrev && fastNow > slowNow) return 'bullish';
+        // Bearish crossover: fast was above slow, now fast is below slow
+        if (fastPrev >= slowPrev && fastNow < slowNow) return 'bearish';
+
+        return 'none';
+    }
+
+    /**
+     * Detect RSI divergence over the last 10 candles.
+     * Bullish divergence: price makes lower low but RSI makes higher low.
+     * Bearish divergence: price makes higher high but RSI makes lower high.
+     */
+    computeRSIDivergence(
+        candles: CandleData[],
+        rsiPeriod: number,
+    ): 'bullish' | 'bearish' | 'none' {
+        const windowSize = 10;
+        if (candles.length < rsiPeriod + windowSize) return 'none';
+
+        // Compute RSI for recent candle slices (newest first)
+        const rsiValues: (number | null)[] = [];
+        for (let i = 0; i < windowSize; i++) {
+            rsiValues.push(this.computeRSI(candles.slice(i), rsiPeriod));
+        }
+
+        // Find lows and highs in the window
+        const recentClose = candles[0]!.close;
+        const recentRsi = rsiValues[0] ?? null;
+        if (recentRsi === null) return 'none';
+
+        // Check for bullish divergence (look at lows)
+        for (let i = 3; i < windowSize; i++) {
+            const pastClose = candles[i]!.close;
+            const pastRsi = rsiValues[i] ?? null;
+            if (pastRsi === null) continue;
+
+            // Price made a lower low, but RSI made a higher low
+            if (recentClose < pastClose && recentRsi > pastRsi) {
+                return 'bullish';
+            }
+        }
+
+        // Check for bearish divergence (look at highs)
+        for (let i = 3; i < windowSize; i++) {
+            const pastClose = candles[i]!.close;
+            const pastRsi = rsiValues[i] ?? null;
+            if (pastRsi === null) continue;
+
+            // Price made a higher high, but RSI made a lower high
+            if (recentClose > pastClose && recentRsi < pastRsi) {
+                return 'bearish';
+            }
+        }
+
+        return 'none';
     }
 
     // ─── Parsers ──────────────────────────────────────────────────────────

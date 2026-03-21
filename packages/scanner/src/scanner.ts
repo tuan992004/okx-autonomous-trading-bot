@@ -57,7 +57,12 @@ export class MarketScanner {
         const snapshots: Record<string, unknown> = {};
         const fetchPromises = instruments.map(async (instId) => {
             try {
-                const snapshot = await this.fetcher.getSnapshot(instId);
+                const snapshot = await this.fetcher.getSnapshot(instId, {
+                    emaFastPeriod: this.config.signals.ema_fast_period,
+                    emaSlowPeriod: this.config.signals.ema_slow_period,
+                    trendEmaPeriod: this.config.signals.trend_ema_period,
+                    rsiPeriod: this.config.signals.rsi_period,
+                });
                 snapshots[instId] = {
                     ticker: {
                         last: snapshot.ticker.last,

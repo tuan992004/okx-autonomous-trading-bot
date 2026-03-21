@@ -1,4 +1,8 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+
+const execFileAsync = promisify(execFile);
 import {
     createLogger,
     getAnthropicClient,
@@ -63,9 +67,24 @@ export class RiskValidator {
             },
         });
 
+        // ── Resolve market order price ──────────────────────────────────────
+        // Market orders may lack a price. Fetch live ticker so the validator
+        // can compute an accurate USDT value before checking limits.
+        let resolvedDecision = decision;
+        if (decision.action !== 'SKIP' && decision.orderType === 'market' && !decision.price) {
+            const livePrice = await this.fetchLivePrice(decision.instrument, cycleId);
+            if (livePrice) {
+                resolvedDecision = { ...decision, price: livePrice };
+                logger.info('Resolved market order price from live ticker', {
+                    cycleId,
+                    data: { instrument: decision.instrument, livePrice },
+                });
+            }
+        }
+
         // ── Layer 1: Hardcoded code-level checks (no LLM) ──────────────────
 
-        const codeCheckResult = this.runCodeLevelChecks(decision, cycleId);
+        const codeCheckResult = this.runCodeLevelChecks(resolvedDecision, cycleId);
         if (!codeCheckResult.approved) {
             logger.warn('Trade REJECTED by code-level safety check', {
                 cycleId,
@@ -77,7 +96,7 @@ export class RiskValidator {
         // ── Layer 2: Haiku-based validation ─────────────────────────────────
 
         try {
-            const llmResult = await this.runLlmValidation(decision, cycleId);
+            const llmResult = await this.runLlmValidation(resolvedDecision, cycleId);
             return llmResult;
         } catch (error: unknown) {
             const msg = error instanceof Error ? error.message : String(error);
@@ -109,9 +128,14 @@ export class RiskValidator {
 
         // 1. Max single order size
         checkedRules.push('max-single-order');
-        const orderValueUsdt = decision.size * (decision.price ?? 0);
-        // For market orders without price, use size directly as USDT value
-        const effectiveValue = decision.price ? orderValueUsdt : decision.size;
+        if (!decision.price && decision.orderType === 'market') {
+            return {
+                approved: false,
+                reason: 'Cannot validate market order: live price unavailable. Rejecting for safety.',
+                checkedRules,
+            };
+        }
+        const effectiveValue = decision.size * (decision.price ?? 0);
         if (effectiveValue > ABSOLUTE_LIMITS.maxSingleOrderUSDT) {
             return {
                 approved: false,
@@ -214,6 +238,35 @@ export class RiskValidator {
         }
 
         return { approved: true, reason: 'All code-level checks passed', checkedRules };
+    }
+
+    /**
+     * Fetch the current mid-price from OKX for a given instrument.
+     * Returns null if the fetch fails (caller should handle gracefully).
+     */
+    private async fetchLivePrice(instId: string, cycleId: string): Promise<number | null> {
+        try {
+            const profile = process.env['OKX_PROFILE'] ?? 'demo';
+            const { stdout } = await execFileAsync('okx', [
+                '--profile', profile, '--json',
+                'market', 'ticker', instId,
+            ], { timeout: 10000 });
+
+            const ticker = JSON.parse(stdout) as Record<string, string>;
+            const bid = parseFloat(ticker['bidPx'] ?? '0');
+            const ask = parseFloat(ticker['askPx'] ?? '0');
+            if (bid > 0 && ask > 0) {
+                return (bid + ask) / 2;
+            }
+            return parseFloat(ticker['last'] ?? '0') || null;
+        } catch (error: unknown) {
+            const msg = error instanceof Error ? error.message : String(error);
+            logger.warn('Failed to fetch live price for market order validation', {
+                cycleId,
+                data: { instrument: instId, error: msg },
+            });
+            return null;
+        }
     }
 
     /**

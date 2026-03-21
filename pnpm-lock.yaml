@@ -26,6 +26,9 @@ importers:
 
   packages/decision:
     dependencies:
+      '@anthropic-ai/sdk':
+        specifier: ^0.39.0
+        version: 0.39.0
       '@okx-bot/shared':
         specifier: workspace:*
         version: link:../shared
@@ -62,6 +65,9 @@ importers:
 
   packages/scanner:
     dependencies:
+      '@anthropic-ai/sdk':
+        specifier: ^0.39.0
+        version: 0.39.0
       '@okx-bot/shared':
         specifier: workspace:*
         version: link:../shared
@@ -98,6 +104,9 @@ importers:
 
   packages/validator:
     dependencies:
+      '@anthropic-ai/sdk':
+        specifier: ^0.39.0
+        version: 0.39.0
       '@okx-bot/shared':
         specifier: workspace:*
         version: link:../shared

@@ -8,10 +8,28 @@ async function main(): Promise<void> {
     const orchestrator = await Orchestrator.create();
 
     // Graceful shutdown handlers
+    let shuttingDown = false;
     const shutdown = async (signal: string): Promise<void> => {
+        if (shuttingDown) return; // Prevent double-shutdown
+        shuttingDown = true;
         logger.info(`Received ${signal} — initiating graceful shutdown`);
-        await orchestrator.shutdown(signal);
-        process.exit(0);
+
+        // Enforce a 10s timeout so the process doesn't hang forever
+        const forceExit = setTimeout(() => {
+            logger.error('Shutdown timed out after 10s — forcing exit');
+            process.exit(1);
+        }, 10_000);
+        forceExit.unref(); // Don't keep the event loop alive
+
+        try {
+            await orchestrator.shutdown(signal);
+        } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err);
+            logger.error(`Shutdown error: ${msg}`);
+        } finally {
+            clearTimeout(forceExit);
+            process.exit(0);
+        }
     };
 
     process.on('SIGINT', () => { void shutdown('SIGINT'); });

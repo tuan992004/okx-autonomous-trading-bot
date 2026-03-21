@@ -16,10 +16,16 @@ services:
       - bot-data:/app/data
       # Persist logs
       - bot-logs:/app/logs
-      # Mount OKX config (read-only)
-      - ${HOME}/.okx:/root/.okx:ro
+      # Mount OKX config (read-only) — use /home/node since container runs as non-root
+      - ${HOME}/.okx:/home/node/.okx:ro
       # Mount custom strategy/risk config (optional)
       - ./config:/app/config:ro
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('https://www.okx.com/api/v5/public/time').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
     deploy:
       resources:
         limits:
